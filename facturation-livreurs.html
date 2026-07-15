@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacturLiv — Facturation des livreurs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --ink:#14213D;          /* bleu nuit logistique */
+  --ink-soft:#3D4C6F;
+  --accent:#2F6FED;       /* bleu bandeau facture */
+  --accent-dark:#1E4FBB;
+  --paper:#F2F4F8;
+  --card:#FFFFFF;
+  --line:#D8DFEC;
+  --danger:#C0392B;
+  --ok:#1E7F4F;
+  --radius:10px;
+  font-size:15px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Archivo',sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  min-height:100vh;
+}
+header.app{
+  background:var(--ink);
+  color:#fff;
+  padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+}
+header.app h1{font-size:1.15rem;font-weight:800;letter-spacing:.02em;font-stretch:87%}
+header.app h1 span{color:var(--accent);}
+header.app .sub{font-size:.78rem;opacity:.75}
+main{
+  display:grid;
+  grid-template-columns:minmax(340px,460px) 1fr;
+  gap:20px;
+  padding:20px;
+  max-width:1400px;
+  margin:0 auto;
+}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+
+/* ---------- FORM ---------- */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.panel h2{
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;
+  color:var(--ink-soft);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.panel h2::before{content:"";width:14px;height:3px;background:var(--accent);border-radius:2px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+label{display:block;font-size:.72rem;font-weight:600;color:var(--ink-soft);margin-bottom:3px}
+input,select{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:.88rem;background:#FBFCFE;color:var(--ink);
+}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.field{margin-bottom:10px}
+.mono{font-family:'JetBrains Mono',monospace;font-size:.8rem}
+
+/* lignes de facture */
+table.lines{width:100%;border-collapse:collapse;font-size:.85rem}
+table.lines th{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);text-align:left;padding:4px}
+table.lines td{padding:3px}
+table.lines input{padding:6px 8px}
+.btn-del{
+  background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;
+  padding:4px 6px;border-radius:4px;
+}
+.btn-del:hover{background:#FDECEA}
+.add-line{
+  background:none;border:1px dashed var(--line);color:var(--accent);font-weight:600;
+  width:100%;padding:8px;border-radius:6px;cursor:pointer;margin-top:8px;font-size:.82rem;
+}
+.add-line:hover{border-color:var(--accent);background:#F0F5FF}
+
+/* boutons d'action */
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{
+  border:none;border-radius:8px;padding:12px 18px;font-family:inherit;font-weight:700;
+  font-size:.9rem;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  transition:transform .08s ease;
+}
+.btn:active{transform:scale(.97)}
+.btn-pdf{background:var(--ink);color:#fff}
+.btn-pdf:hover{background:#0D1830}
+.btn-wa{background:#25D366;color:#fff}
+.btn-wa:hover{background:#1EB955}
+.btn-save{background:var(--accent);color:#fff}
+.btn-save:hover{background:var(--accent-dark)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:.72rem;color:var(--ink-soft);margin-top:8px;line-height:1.5}
+
+/* registre livreurs */
+.driver-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px}
+.driver-row .field{flex:1;margin-bottom:0}
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;
+  opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;
+}
+.toast.show{opacity:1}
+
+/* ---------- APERÇU FACTURE ---------- */
+.preview-wrap{position:sticky;top:16px}
+@media(max-width:980px){.preview-wrap{position:static}}
+.preview-scroll{overflow-x:auto;border-radius:var(--radius)}
+#facture{
+  background:#fff;
+  width:794px;              /* A4 @96dpi */
+  min-height:1000px;
+  padding:48px 52px;
+  border:1px solid var(--line);
+  font-family:'Archivo',sans-serif;
+  color:#111;
+  font-size:13px;
+}
+#facture .f-head{display:flex;justify-content:space-between;gap:24px}
+#facture .f-emetteur h3{
+  font-size:22px;font-weight:800;border:1.5px solid #111;padding:6px 14px;display:inline-block;
+}
+#facture .f-info{margin-top:12px;line-height:1.7;font-size:12.5px}
+#facture .f-info b{display:inline-block;width:64px;font-weight:600}
+#facture .f-dest{text-align:right;line-height:1.7;font-size:12.5px}
+#facture .f-dest .soc{font-weight:800;font-size:15px}
+#facture .f-titre{text-align:right;font-weight:800;font-size:15px;margin-top:18px}
+#facture .f-echeance{text-align:right;font-size:12px;margin-top:10px}
+#facture table.ftab{width:100%;border-collapse:collapse;margin-top:26px;font-size:12.5px}
+#facture table.ftab th{
+  background:var(--accent);color:#fff;font-weight:700;text-align:left;
+  padding:6px 10px;font-size:12px;
+}
+#facture table.ftab th.num,#facture table.ftab td.num{text-align:right}
+#facture table.ftab td{border-bottom:1px solid #E4E8F0;padding:6px 10px}
+#facture table.ftab tr.penalty td{color:var(--danger)}
+#facture .f-totaux{margin-top:4px}
+#facture .f-totaux td{padding:6px 10px;font-size:12.5px}
+#facture .f-totaux .lab{font-weight:600}
+#facture .f-totaux tr.total td{border-top:2px solid #111;font-weight:800;font-size:14px}
+#facture .f-rib{margin-top:56px;font-size:12px}
+#facture .f-rib .rib-title{text-align:center;font-weight:600;margin-bottom:10px}
+#facture .f-rib .rib-line{margin-bottom:8px}
+#facture .f-rib .rib-lab{font-weight:800}
+#facture .f-rib .rib-val{background:#DCDCDC;padding:4px 8px;display:block;max-width:280px;font-family:'JetBrains Mono',monospace;font-size:11.5px}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1>Factur<span>Liv</span> · Facturation des livreurs</h1>
+  <div class="sub">PDF + envoi WhatsApp — TLC / sous-traitants</div>
+</header>
+
+<main>
+<!-- ==================== COLONNE FORMULAIRE ==================== -->
+<div>
+
+  <div class="panel">
+    <h2>Livreur (émetteur de la facture)</h2>
+    <div class="driver-row">
+      <div class="field">
+        <label>Livreurs enregistrés</label>
+        <select id="driverSelect"><option value="">— Nouveau livreur —</option></select>
+      </div>
+      <button class="btn btn-save" id="btnSaveDriver" title="Enregistrer ce livreur">💾</button>
+      <button class="btn-del" id="btnDelDriver" title="Supprimer ce livreur">🗑</button>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Nom Prénom</label><input id="dNom" placeholder="DAERDEN Raphael"></div>
+      <div class="field"><label>Téléphone (WhatsApp)</label><input id="dTel" class="mono" placeholder="0681598651"></div>
+    </div>
+    <div class="field"><label>Adresse</label><input id="dAdr" placeholder="10 impasse Opsomer"></div>
+    <div class="grid2">
+      <div class="field"><label>CP + Ville</label><input id="dCp" placeholder="59200 Tourcoing"></div>
+      <div class="field"><label>SIRET</label><input id="dSiret" class="mono" placeholder="93919649900015"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>IBAN</label><input id="dIban" class="mono" placeholder="FR76..."></div>
+      <div class="field"><label>BIC / SWIFT</label><input id="dBic" class="mono" placeholder="INTFBGSF"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Société facturée (destinataire)</h2>
+    <div class="grid2">
+      <div class="field"><label>Nom de la société</label><input id="sNom" placeholder="SKF TRANSPORT – SAS"></div>
+      <div class="field"><label>SIRET</label><input id="sSiret" class="mono" placeholder="833 284 730 00011"></div>
+    </div>
+    <div class="field"><label>Adresse (ligne 1)</label><input id="sAdr1" placeholder="BAT F, 4 rue Eugène Collonge"></div>
+    <div class="field"><label>Adresse (ligne 2)</label><input id="sAdr2" placeholder="69370 Saint-Didier-au-Mont-d'Or"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Facture</h2>
+    <div class="grid2">
+      <div class="field"><label>Intitulé / Mois</label><input id="fMois" placeholder="Facture TTT Avril 2026"></div>
+      <div class="field"><label>Échéance</label><input id="fEch" value="J+30"></div>
+    </div>
+
+    <table class="lines" id="linesTable">
+      <thead><tr><th style="width:42%">Description</th><th>Qté</th><th>Prix/U (€)</th><th></th></tr></thead>
+      <tbody id="linesBody"></tbody>
+    </table>
+    <button class="add-line" id="addLine">+ Ajouter une ligne (colis, dispatch, régularisation…)</button>
+
+    <div style="margin-top:16px">
+      <label style="font-size:.72rem;font-weight:600;color:var(--danger)">Pénalités (déduites du total)</label>
+      <table class="lines"><tbody id="penBody"></tbody></table>
+      <button class="add-line" id="addPen" style="color:var(--danger);border-color:#EBC4BF">+ Ajouter une pénalité (tournée à terre, perte, réclamation…)</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Actions</h2>
+    <div class="actions">
+      <button class="btn btn-pdf" id="btnPdf">📄 Télécharger le PDF</button>
+      <button class="btn btn-wa" id="btnWa">💬 Envoyer sur WhatsApp</button>
+    </div>
+    <p class="hint">
+      WhatsApp s'ouvre sur le numéro du livreur avec un message récapitulatif pré-rempli.
+      Joins ensuite le PDF téléchargé (trombone → Document) : WhatsApp n'autorise pas
+      l'attachement automatique de fichiers par lien.
+    </p>
+  </div>
+
+</div>
+
+<!-- ==================== COLONNE APERÇU ==================== -->
+<div class="preview-wrap">
+  <div class="preview-scroll">
+    <div id="facture">
+      <div class="f-head">
+        <div class="f-emetteur">
+          <h3 id="pNom">—</h3>
+          <div class="f-info">
+            <div><b>Num :</b> <span id="pTel"></span></div>
+            <div><b>Adresse :</b> <span id="pAdr"></span></div>
+            <div><b>CP :</b> <span id="pCp"></span></div>
+            <div><b>Siret :</b> <span id="pSiret"></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="f-dest">
+            <div class="soc" id="pSoc">—</div>
+            <div id="pSocAdr1"></div>
+            <div id="pSocAdr2"></div>
+            <div>Siret : <span id="pSocSiret"></span></div>
+          </div>
+          <div class="f-titre" id="pMois"></div>
+          <div class="f-echeance">Échéance : <span id="pEch"></span></div>
+        </div>
+      </div>
+
+      <table class="ftab">
+        <thead>
+          <tr><th>Description</th><th class="num">Quantité</th><th class="num">Prix/U</th><th class="num">Coût TTC</th></tr>
+        </thead>
+        <tbody id="pLines"></tbody>
+      </table>
+
+      <table class="ftab f-totaux">
+        <tbody id="pTotaux"></tbody>
+      </table>
+
+      <div class="f-rib">
+        <div class="rib-title">Titulaire du compte</div>
+        <div class="rib-line"><div class="rib-lab">Nom Prénom</div><span class="rib-val" id="pRibNom"></span></div>
+        <div class="rib-line"><div class="rib-lab">IBAN</div><span class="rib-val" id="pRibIban"></span></div>
+        <div class="rib-line"><div class="rib-lab">BIC / SWIFT</div><span class="rib-val" id="pRibBic"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= ÉTAT ================= */
+const $ = id => document.getElementById(id);
+const euro = n => n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+
+let lines = [
+  {desc:'Colis livrés', qte:0, prix:1.30},
+  {desc:'Dispatch', qte:0, prix:0.10},
+];
+let penalties = [];
+
+/* ================= LIGNES ================= */
+function renderLines(){
+  $('linesBody').innerHTML = lines.map((l,i)=>`
+    <tr>
+      <td><input value="${esc(l.desc)}" oninput="lines[${i}].desc=this.value;renderPreview()"></td>
+      <td><input type="number" min="0" value="${l.qte}" oninput="lines[${i}].qte=parseFloat(this.value)||0;renderPreview()"></td>
+      <td><input type="number" step="0.01" min="0" value="${l.prix}" oninput="lines[${i}].prix=parseFloat(this.value)||0;renderPreview()"></td>
+      <td><button class="btn-del" onclick="lines.splice(${i},1);renderLines();renderPreview()">✕</button></td>
+    </tr>`).join('');
+  $('penBody').innerHTML = penalties.map((p,i)=>`
+    <tr>
+      <td style="width:60%"><input value="${esc(p.desc)}" placeholder="Tournée à terre" oninput="penalties[${i}].desc=this.value;renderPreview()"></td>
+      <td><input type="number" step="0.01" min="0" value="${p.montant}" placeholder="Montant €" oninput="penalties[${i}].montant=parseFloat(this.value)||0;renderPreview()"></td>
+      <td><button class="btn-del" onclick="penalties.splice(${i},1);renderLines();renderPreview()">✕</button></td>
+    </tr>`).join('');
+}
+$('addLine').onclick = ()=>{ lines.push({desc:'',qte:0,prix:0}); renderLines(); };
+$('addPen').onclick  = ()=>{ penalties.push({desc:'',montant:0}); renderLines(); };
+
+function esc(s){return String(s??'').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+
+/* ================= APERÇU ================= */
+const formFields = ['dNom','dTel','dAdr','dCp','dSiret','dIban','dBic','sNom','sSiret','sAdr1','sAdr2','fMois','fEch'];
+formFields.forEach(f=>$(f).addEventListener('input', renderPreview));
+
+function totals(){
+  const sousTotal = lines.reduce((s,l)=>s + l.qte*l.prix, 0);
+  const totalPen  = penalties.reduce((s,p)=>s + p.montant, 0);
+  return {sousTotal, totalPen, total: sousTotal - totalPen};
+}
+
+function renderPreview(){
+  $('pNom').textContent = $('dNom').value || '—';
+  $('pTel').textContent = $('dTel').value;
+  $('pAdr').textContent = $('dAdr').value;
+  $('pCp').textContent = $('dCp').value;
+  $('pSiret').textContent = $('dSiret').value;
+  $('pSoc').textContent = $('sNom').value || '—';
+  $('pSocAdr1').textContent = $('sAdr1').value;
+  $('pSocAdr2').textContent = $('sAdr2').value;
+  $('pSocSiret').textContent = $('sSiret').value;
+  $('pMois').textContent = $('fMois').value;
+  $('pEch').textContent = $('fEch').value;
+  $('pRibNom').textContent = $('dNom').value;
+  $('pRibIban').textContent = $('dIban').value;
+  $('pRibBic').textContent = $('dBic').value;
+
+  $('pLines').innerHTML =
+    lines.map(l=>`<tr><td>${esc(l.desc)}</td><td class="num">${l.qte||''}</td><td class="num">${l.prix?euro(l.prix):''}</td><td class="num">${euro(l.qte*l.prix)}</td></tr>`).join('')
+    + penalties.map(p=>`<tr class="penalty"><td>${esc(p.desc)||'Pénalité'}</td><td class="num"></td><td class="num"></td><td class="num">− ${euro(p.montant)}</td></tr>`).join('');
+
+  const t = totals();
+  let rows = `<tr><td style="width:70%" class="lab">Sous-Total :</td><td class="num">${euro(t.sousTotal)}</td></tr>`;
+  if (penalties.length) rows += `<tr><td class="lab" style="color:var(--danger)">Total pénalités :</td><td class="num" style="color:var(--danger)">− ${euro(t.totalPen)}</td></tr>`;
+  rows += `<tr class="total"><td class="lab">Total</td><td class="num">${euro(t.total)}</td></tr>`;
+  $('pTotaux').innerHTML = rows;
+}
+
+/* ================= REGISTRE LIVREURS (stockage) ================= */
+/* Utilise window.storage dans Claude, sinon localStorage du navigateur (GitHub Pages, etc.) */
+const store = {
+  async get(key){
+    if(window.storage) return await window.storage.get(key);
+    const v = localStorage.getItem(key);
+    return v === null ? null : {key, value:v};
+  },
+  async set(key, value){
+    if(window.storage) return await window.storage.set(key, value);
+    localStorage.setItem(key, value);
+    return {key, value};
+  }
+};
+/* Registre pré-chargé (import Tableau_Chauffeurs). Les ajouts/modifs manuels sont sauvegardés par-dessus. */
+const DEFAULT_DRIVERS = [
+{dNom:"BANZOUZI Keny",dTel:"0612860055",dAdr:"94 RUE DE L EPINE",dCp:"59200 Tourcoing",dSiret:"893156547",dIban:"IE03 SUMU 9903 6512 0082 99",dBic:"SUMUIE22XXX"},
+{dNom:"BEN CHAIBI Nordine",dTel:"0761615226",dAdr:"11/56 place Sebastopol",dCp:"59200 Tourcoing",dSiret:"82921064000027",dIban:"IE02 SUMU 9903 6511 7193 54",dBic:"SUMUIE22XXX"},
+{dNom:"BEN SAID HAMIDA Ihab",dTel:"0766274164",dAdr:"7 rue du 8 mai 1945",dCp:"59223 Roncq",dSiret:"9324736000014",dIban:"IE76 MPOS 9903 9058 0342 65",dBic:"MPOSIE2D"},
+{dNom:"BERNARD Frederic",dTel:"0673530075",dAdr:"24 rue Jean Froissart",dCp:"59200 Tourcoing",dSiret:"51401621100039",dIban:"IE05SUMU99036511660518",dBic:"SUMUIE22XXX"},
+{dNom:"BIENFAIT Quentin",dTel:"",dAdr:"",dCp:"",dSiret:"",dIban:"",dBic:""},
+{dNom:"BOUKHRIS Ahmed",dTel:"0773465043",dAdr:"249/294 rue des Piats",dCp:"59200 Tourcoing",dSiret:"93143744600012",dIban:"FR80 2043 3026 26N2 6692 0070 249",dBic:"NTSBFRM1XXX"},
+{dNom:"BOUNAB Sephora",dTel:"0781317463",dAdr:"43/31 rue de Wailly",dCp:"59200 Tourcoing",dSiret:"94327670900012",dIban:"IE14 SUMU 9903 6511 6716 08",dBic:"SUMUIE22XXX"},
+{dNom:"BOUSSAADIA Oualid",dTel:"0785918311",dAdr:"265 boulevard Constantin Descat",dCp:"59200 Tourcoing",dSiret:"879 221 646",dIban:"IE40 SUMU 9903 6512 0589 46",dBic:"SUMUIE22XXX"},
+{dNom:"CHAKOUCH Mohand",dTel:"0674752174",dAdr:"119 rue Decrême",dCp:"59100 Roubaix",dSiret:"945 406 783 00015",dIban:"FR94 3000 2082 3600 0005 8130 L33",dBic:"CRLYFRPPXXX"},
+{dNom:"CHATTY Ahamadou",dTel:"0783420480",dAdr:"8 allée Desmond Tutu",dCp:"59150 Wattrelos",dSiret:"88076680300022",dIban:"IE68 SUMU 9903 6512 0592 18",dBic:"SUMUIE22XXX"},
+{dNom:"CHEDOUANE Abdoullah",dTel:"0605804557",dAdr:"44 rue houchard",dCp:"59200 Tourcoing",dSiret:"98794937700012",dIban:"FR7628233000011777964818015",dBic:"REVOFRP2"},
+{dNom:"CHENOUFI Aissa",dTel:"0767664758",dAdr:"26 rue du fort",dCp:"59370 Mons-en-Baroeul",dSiret:"93261601400019",dIban:"IE23 SUMU 9903 6511 7004 49",dBic:"SUMUIE22XXX"},
+{dNom:"DAERDEN Raphael",dTel:"0681598651",dAdr:"10 impasse Opsomer",dCp:"59200 Tourcoing",dSiret:"93919649900015",dIban:"BG14INTF40012046484835",dBic:"INTFBGSF"},
+{dNom:"DIABY Daouda",dTel:"0605761657",dAdr:"140 rue de Carnot",dCp:"59150 Wattrelos",dSiret:"880 415 625",dIban:"IE95SUMU99036511935251",dBic:"SUMUIE22XXX"},
+{dNom:"DJIKINE Sidiya",dTel:"0643586605",dAdr:"47Bis/63 rue Descartes",dCp:"59100 Roubaix",dSiret:"93359306300011",dIban:"IE93SUMU99036511949255",dBic:"SUMUIE22XXX"},
+{dNom:"DROUB Amine",dTel:"0603768235",dAdr:"42 rue du Virolois",dCp:"59199 Tourcoing",dSiret:"932837925",dIban:"FR76 2823 3000 0183 2840 1183 488",dBic:"REVOFRP2"},
+{dNom:"DUEZ Alexis",dTel:"0766950130",dAdr:"36 rue du capitaine Debruyn",dCp:"59200 Tourcoing",dSiret:"89483334200039",dIban:"IE18 SUMU 9903 6511 7203 27",dBic:"SUMUIE22XXX"},
+{dNom:"EL AZZATI Youness",dTel:"0768189952",dAdr:"70 rue de la prevoyance",dCp:"59000 Lille",dSiret:"910682335",dIban:"FR76 3002 7170 3700 0204 2920 285",dBic:"CMCIFRPP"},
+{dNom:"ELKHAMLICHI Damien",dTel:"0664698171",dAdr:"43 rue Winston Churchill",dCp:"59160 Lomme",dSiret:"988 209 938 00014",dIban:"IE96 SUMU 9903 6511 9428 96",dBic:"SUMUIE22XXX"},
+{dNom:"ENNAJAR Mouad",dTel:"0781285615",dAdr:"25/6 rue Duguay Trouin",dCp:"59200 Tourcoing",dSiret:"93532583700018",dIban:"IE59 SUMU 9903 6511 5284 02",dBic:"SUMUIE22XXX"},
+{dNom:"ETTAOUSY Mohamed",dTel:"0605895145",dAdr:"44 rue de Mouvaux",dCp:"59200 Tourcoing",dSiret:"92389617900010",dIban:"BE17 9052 9919 7921",dBic:"TRWIBEB1XXX"},
+{dNom:"FAHAM Yanisse",dTel:"0668687473",dAdr:"63 RUE FREDERIC CHOPIN",dCp:"59150 Wattrelos",dSiret:"877856971",dIban:"IE57SUMU99036512564107",dBic:"SUMUIE22XXX"},
+{dNom:"FETTAH Moussa",dTel:"0766139070",dAdr:"59 rue saint Blaise",dCp:"59200 Tourcoing",dSiret:"90226060300037",dIban:"FR7628233000012016602610822",dBic:"REVOFRP2"},
+{dNom:"GASSAMA Seny",dTel:"0695494744",dAdr:"51 bd de la Grande Valaisière",dCp:"53600 Evron",dSiret:"93327736000014",dIban:"IE39 SUMU 9903 6511 9330 58",dBic:"SUMUIE22XXX"},
+{dNom:"HADJ-ALI Soumeya",dTel:"0745579520",dAdr:"32 rue Romain Rolland porte 9",dCp:"59100 Roubaix",dSiret:"891 519 274",dIban:"FR84 3000 2082 0000 0059 3830 T48",dBic:"CRLYFRPP"},
+{dNom:"HAMRIT Rayane",dTel:"0602050872",dAdr:"46 rue Paul Verschave",dCp:"59200 Tourcoing",dSiret:"833798440",dIban:"FR76 2823 3000 0144 1493 3454 975",dBic:"REVOFRP2"},
+{dNom:"HOSNI Fouad",dTel:"0638599320",dAdr:"38 rue du capitaine Debruyne",dCp:"59200 Tourcoing",dSiret:"93994854300011",dIban:"BG46 INTF 4001 2056 3771 92",dBic:"INTFBGSF"},
+{dNom:"JRIRI Djamel",dTel:"0652547793",dAdr:"4/32 rue Edgar Degas",dCp:"59100 Roubaix",dSiret:"93433167900019",dIban:"FR76 2823 3000 0145 3020 7729 526",dBic:"REVOFRP2"},
+{dNom:"KHAMNOUTHAY Matis",dTel:"0766893385",dAdr:"77 rue de la paix",dCp:"59100 Roubaix",dSiret:"994 390 185",dIban:"FR76 2823 3000 0104 5518 0888 011",dBic:"REVOFRP2"},
+{dNom:"MAATOUG Hamza",dTel:"0658067263",dAdr:"11/24 rue Jehan de Tourcoing",dCp:"59200 Tourcoing",dSiret:"83750013100037",dIban:"IE67SUMU99036511740591",dBic:"SUMUIE22XXX"},
+{dNom:"MANSOURI El Mahdi",dTel:"0767365043",dAdr:"A ALLEE DES SAULES PORTE N° 0022",dCp:"59100 Roubaix",dSiret:"903 962 371",dIban:"FR76 2823 3000 0183 4490 7001 084",dBic:"REVOFRP2"},
+{dNom:"MAZARI Samy",dTel:"0761570807",dAdr:"31 rue Jules Guesde",dCp:"59150 Wattrelos",dSiret:"93090467700018",dIban:"IE83 SUMU 9903 6512 0589 48",dBic:"SUMUIE22XXX"},
+{dNom:"MECHRAOUI Larbi",dTel:"",dAdr:"128 rue du Président Coty",dCp:"59200 Tourcoing",dSiret:"903827194",dIban:"IE11SUMU99036512383157",dBic:"SUMUIE22XXX"},
+{dNom:"MEKKEDEM Rayane",dTel:"",dAdr:"",dCp:"",dSiret:"",dIban:"",dBic:""},
+{dNom:"MOHADDAB Mostafa",dTel:"0602891707",dAdr:"202 Avenue de Verdun",dCp:"59100 Roubaix",dSiret:"938039344",dIban:"IE91SUMU99036512207893",dBic:"SUMUIE22XXX"},
+{dNom:"RACHEDI Naim",dTel:"0638605108",dAdr:"138 rue Paul Parisot",dCp:"59000 Lille",dSiret:"en cours",dIban:"BE97 7310 6312 5349",dBic:"KREDBEBBXXX"},
+{dNom:"RECHID Elfodil",dTel:"0665476054",dAdr:"24 rue de menin",dCp:"59200 Tourcoing",dSiret:"88423544100018",dIban:"BE14967574853183",dBic:"TRWIBEB1XXX"},
+{dNom:"REKKAD Yacine",dTel:"0650731693",dAdr:"194 rue Rosselet",dCp:"59000 Lille",dSiret:"93475157900012",dIban:"BE54 9052 8406 3897",dBic:"TRWIBEB1XXX"},
+{dNom:"SABI Raiane",dTel:"",dAdr:"81 rue George Seghers",dCp:"59149 Wattrelos",dSiret:"988297040",dIban:"FR76 3000 3029 7900 0502 6357 718",dBic:"SOGEFRPP"},
+{dNom:"SADFI Abdel-Hak",dTel:"",dAdr:"7 RUE D'ANTOING",dCp:"59100 ROUBAIX",dSiret:"98490128000011",dIban:"FR76 4061 8804 4700 0409 3588 537",dBic:""},
+{dNom:"SADOUKI Yacine",dTel:"0624152676",dAdr:"20 rue Edgar Degas",dCp:"59100 Roubaix",dSiret:"949293906",dIban:"FR80 2043 3026 26N2 6359 9564 309",dBic:"NTSBFRM1XXX"},
+{dNom:"SANOUO Seny",dTel:"0616614256",dAdr:"1 rue Leo Lagrange App101",dCp:"59100 Roubaix",dSiret:"891715062",dIban:"FR76 2823 3000 0123 7691 7852 753",dBic:"REVOFRP2"},
+{dNom:"SAYARATH Dylane",dTel:"",dAdr:"",dCp:"",dSiret:"",dIban:"",dBic:""},
+{dNom:"SAYARATH Johnny",dTel:"0781246544",dAdr:"5 rue de la teinturerie",dCp:"59150 Wattrelos",dSiret:"894449677",dIban:"FR76 2823 3000 0104 5518 0888 011",dBic:"REVOFRP2"},
+{dNom:"SAYARATH Kevin",dTel:"0781185512",dAdr:"5 rue de la teinturerie",dCp:"59150 Wattrelos",dSiret:"93992653100012",dIban:"IE12 SUMU 9903 6511 8021 09",dBic:"SUMUIE22XXX"},
+{dNom:"SEBBACHE Ryad",dTel:"0651105416",dAdr:"31 RUE DU MARECHAL JUIN",dCp:"59420 Mouvaux",dSiret:"830 378 782",dIban:"FR76 3000 4022 9300 0003 6231 728",dBic:"BNPAFRPPXXX"},
+{dNom:"SISSOKO Malal",dTel:"0658585732",dAdr:"110 rue de la croix rouge",dCp:"59200 Tourcoing",dSiret:"937 781 102",dIban:"FR7628233000017409001972725",dBic:"REVOFRP2"},
+{dNom:"THEPLANGSY Saypannha",dTel:"0759644203",dAdr:"24 rue Albert Inghels Pere et Fils",dCp:"59200 Tourcoing",dSiret:"85369349700036",dIban:"IE76 SUMU 9903 6512 0615 96",dBic:"SUMUIE22XXX"},
+{dNom:"TIAGO Jeremy",dTel:"0783108126",dAdr:"47 D rue de la Blanche Porte appt 12",dCp:"59200 Tourcoing",dSiret:"10064511800017",dIban:"IE47SUMU99036512780888",dBic:"SUMUIE22XXX"},
+{dNom:"TOURE Seny",dTel:"",dAdr:"",dCp:"",dSiret:"",dIban:"",dBic:""},
+{dNom:"TOUZANI Mehdi",dTel:"0641943857",dAdr:"83 rue du Faubourg des postes",dCp:"59000 Lille",dSiret:"944 584 895 00014",dIban:"IE17 SUMU 9903 6512 0925 34",dBic:"SUMUIE22XXX"},
+{dNom:"TOUZANI Mohamed",dTel:"0699860479",dAdr:"Rue Jean Moulin Bat F Appt13",dCp:"62220 Carvin",dSiret:"88206269800023",dIban:"IE73 SUMU 9903 6510 7783 40",dBic:"SUMUIE22XXX"},
+{dNom:"VANDENBOREN Heinrich",dTel:"0605839378",dAdr:"1/11 Rue Andre Huys",dCp:"59100 Roubaix",dSiret:"en cours",dIban:"FR5620041010051822231F02614",dBic:"PSSTFRPPLIL"},
+{dNom:"ZAHIRI Abdelouahad",dTel:"0765161315",dAdr:"72/3 rue de la Latte",dCp:"59200 Tourcoing",dSiret:"94382723800016",dIban:"IE82 SUMU 9903 6511 9350 97",dBic:"SUMUIE22XXX"}
+];
+
+let drivers = [];
+function sortDrivers(){ drivers.sort((a,b)=>a.dNom.localeCompare(b.dNom,'fr')); }
+async function loadDrivers(){
+  try{
+    const r = await store.get('livreurs');
+    drivers = r ? JSON.parse(r.value) : null;
+  }catch(e){ drivers = null; }
+  if(!drivers || !drivers.length){
+    /* Premier lancement : on charge le registre importé et on le sauvegarde */
+    drivers = JSON.parse(JSON.stringify(DEFAULT_DRIVERS));
+    try{ await store.set('livreurs', JSON.stringify(drivers)); }catch(e){}
+  }
+  sortDrivers();
+  refreshDriverSelect();
+}
+function refreshDriverSelect(){
+  const sel = $('driverSelect');
+  sel.innerHTML = '<option value="">— Nouveau livreur —</option>' +
+    drivers.map((d,i)=>`<option value="${i}">${esc(d.dNom)}</option>`).join('');
+}
+$('driverSelect').onchange = e=>{
+  const i = e.target.value;
+  if(i==='') return;
+  const d = drivers[i];
+  ['dNom','dTel','dAdr','dCp','dSiret','dIban','dBic'].forEach(f=>$(f).value = d[f]||'');
+  renderPreview();
+};
+$('btnSaveDriver').onclick = async ()=>{
+  const d = {};
+  ['dNom','dTel','dAdr','dCp','dSiret','dIban','dBic'].forEach(f=>d[f]=$(f).value.trim());
+  if(!d.dNom){ toast('Renseigne au moins le nom du livreur'); return; }
+  const idx = drivers.findIndex(x=>x.dNom.toLowerCase()===d.dNom.toLowerCase());
+  if(idx>=0) drivers[idx]=d; else drivers.push(d);
+  sortDrivers();
+  try{
+    await store.set('livreurs', JSON.stringify(drivers));
+    toast('Livreur enregistré ✓');
+  }catch(e){ toast('Erreur de sauvegarde'); }
+  refreshDriverSelect();
+};
+$('btnDelDriver').onclick = async ()=>{
+  const i = $('driverSelect').value;
+  if(i===''){ toast('Sélectionne un livreur à supprimer'); return; }
+  if(!confirm('Supprimer ' + drivers[i].dNom + ' du registre ?')) return;
+  drivers.splice(i,1);
+  try{ await store.set('livreurs', JSON.stringify(drivers)); }catch(e){}
+  refreshDriverSelect();
+  toast('Livreur supprimé');
+};
+
+/* ================= PDF ================= */
+$('btnPdf').onclick = async ()=>{
+  const btn = $('btnPdf'); btn.disabled = true; btn.textContent = '⏳ Génération…';
+  try{
+    const el = $('facture');
+    const canvas = await html2canvas(el, {scale:2, backgroundColor:'#ffffff'});
+    const img = canvas.toDataURL('image/png');
+    const pdf = new jspdf.jsPDF({unit:'mm', format:'a4'});
+    const w = 210;
+    const h = canvas.height * w / canvas.width;
+    pdf.addImage(img, 'PNG', 0, 0, w, Math.min(h,297));
+    const nom = ($('dNom').value||'facture').replace(/\s+/g,'_');
+    const mois = ($('fMois').value||'').replace(/\s+/g,'_');
+    pdf.save(`Facture_${nom}_${mois}.pdf`);
+  }catch(e){ toast('Erreur lors de la génération du PDF'); console.error(e); }
+  btn.disabled = false; btn.textContent = '📄 Télécharger le PDF';
+};
+
+/* ================= WHATSAPP ================= */
+$('btnWa').onclick = ()=>{
+  let tel = $('dTel').value.replace(/[\s.\-]/g,'');
+  if(!tel){ toast('Renseigne le numéro du livreur'); return; }
+  if(tel.startsWith('0')) tel = '33' + tel.slice(1);
+  tel = tel.replace(/^\+/,'');
+  const t = totals();
+  let msg = `*${$('fMois').value || 'Facture'}*\n`;
+  msg += `Livreur : ${$('dNom').value}\n`;
+  msg += `Facturé à : ${$('sNom').value}\n\n`;
+  lines.forEach(l=>{ if(l.qte*l.prix>0 || l.qte>0) msg += `• ${l.desc} : ${l.qte} × ${euro(l.prix)} = ${euro(l.qte*l.prix)}\n`; });
+  penalties.forEach(p=>{ msg += `• ⚠️ ${p.desc||'Pénalité'} : − ${euro(p.montant)}\n`; });
+  msg += `\n*Total : ${euro(t.total)}*\nÉchéance : ${$('fEch').value}\n\n📎 Le PDF de la facture suit dans le prochain message.`;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+/* ================= TOAST ================= */
+let toastTimer;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* init */
+renderLines();
+renderPreview();
+loadDrivers();
+</script>
+</body>
+</html>
