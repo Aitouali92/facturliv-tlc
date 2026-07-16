@@ -499,18 +499,32 @@ $('btnPdf').onclick = async ()=>{
 };
 
 /* ================= WHATSAPP ================= */
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function moisFacture(){
+  /* Détecte le mois + l'année dans l'intitulé de la facture (ex. "Facture TTT Avril 2026") */
+  const txt = ($('fMois').value || '').toLowerCase();
+  const mois = MOIS_FR.find(m => txt.includes(m));
+  const annee = (txt.match(/20\d{2}/) || [])[0];
+  if(mois) return mois + ' ' + (annee || new Date().getFullYear());
+  /* Sinon : mois en cours */
+  return new Date().toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+}
 $('btnWa').onclick = ()=>{
   let tel = $('dTel').value.replace(/[\s.\-]/g,'');
   if(!tel){ toast('Renseigne le numéro du livreur'); return; }
   if(tel.startsWith('0')) tel = '33' + tel.slice(1);
   tel = tel.replace(/^\+/,'');
-  const t = totals();
-  let msg = `*${$('fMois').value || 'Facture'}*\n`;
-  msg += `Livreur : ${$('dNom').value}\n`;
-  msg += `Facturé à : ${$('sNom').value}\n\n`;
-  lines.forEach(l=>{ if(l.qte*l.prix>0 || l.qte>0) msg += `• ${l.desc} : ${l.qte} × ${euro(l.prix)} = ${euro(l.qte*l.prix)}\n`; });
-  penalties.forEach(p=>{ msg += `• ⚠️ ${p.desc||'Pénalité'} : − ${euro(p.montant)}\n`; });
-  msg += `\n*Total : ${euro(t.total)}*\nÉchéance : ${$('fEch').value}\n\n📎 Le PDF de la facture suit dans le prochain message.`;
+  const msg =
+`Bonjour,
+Veuillez trouver ci-joint la facture du mois de *${moisFacture()}*.
+Je vous invite à la vérifier attentivement.
+Vous disposez d'un délai maximum de *48 heures* à compter de sa réception pour me signaler toute erreur ou anomalie éventuelle.
+Passé ce délai, aucune remarque ou contestation ne pourra être prise en compte dans le cadre de cette facturation.
+Merci pour votre compréhension.
+Cordialement,
+*Omar AIT OUALI*
+Dispatcher – GOFO
+TLC Services`;
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
