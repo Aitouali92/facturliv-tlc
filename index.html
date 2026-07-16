@@ -514,9 +514,17 @@ $('btnWa').onclick = ()=>{
   if(!tel){ toast('Renseigne le numéro du livreur'); return; }
   if(tel.startsWith('0')) tel = '33' + tel.slice(1);
   tel = tel.replace(/^\+/,'');
+  const t = totals();
+  let detail = '';
+  lines.forEach(l=>{ if(l.qte>0 || l.qte*l.prix>0) detail += `• ${l.desc} : ${l.qte} × ${euro(l.prix)} = ${euro(l.qte*l.prix)}\n`; });
+  penalties.forEach(p=>{ detail += `• ⚠️ ${p.desc||'Pénalité'} : − ${euro(p.montant)}\n`; });
   const msg =
 `Bonjour,
 Veuillez trouver ci-joint la facture du mois de *${moisFacture()}*.
+
+*Détail de la facturation :*
+${detail}*Total : ${euro(t.total)}*
+
 Je vous invite à la vérifier attentivement.
 Vous disposez d'un délai maximum de *48 heures* à compter de sa réception pour me signaler toute erreur ou anomalie éventuelle.
 Passé ce délai, aucune remarque ou contestation ne pourra être prise en compte dans le cadre de cette facturation.
