@@ -217,6 +217,10 @@ table.lines input{padding:6px 8px}
       <table class="lines"><tbody id="penBody"></tbody></table>
       <button class="add-line" id="addPen" style="color:var(--danger);border-color:#EBC4BF">+ Ajouter une pénalité (tournée à terre, perte, réclamation…)</button>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-save" id="btnSaveFacture">💾 Enregistrer la facture</button>
+      <span class="hint" id="factStatus" style="margin-top:0"></span>
+    </div>
   </div>
 
   <div class="panel">
@@ -351,6 +355,7 @@ function renderPreview(){
   if (penalties.length) rows += `<tr><td class="lab" style="color:var(--danger)">Total pénalités :</td><td class="num" style="color:var(--danger)">− ${euro(t.totalPen)}</td></tr>`;
   rows += `<tr class="total"><td class="lab">Total</td><td class="num">${euro(t.total)}</td></tr>`;
   $('pTotaux').innerHTML = rows;
+  scheduleAutoSave();   /* sauvegarde automatique à chaque modification */
 }
 
 /* ================= REGISTRE LIVREURS (stockage) ================= */
@@ -450,7 +455,7 @@ $('driverSelect').onchange = e=>{
   if(i==='') return;
   const d = drivers[i];
   ['dNom','dTel','dAdr','dCp','dSiret','dIban','dBic'].forEach(f=>$(f).value = d[f]||'');
-  renderPreview();
+  loadFactureFor(d.dNom);   /* recharge la dernière facture de ce chauffeur */
 };
 $('btnSaveDriver').onclick = async ()=>{
   const d = {};
@@ -509,7 +514,60 @@ $('btnWa').onclick = ()=>{
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
 };
 
-/* ================= TOAST ================= */
+/* ================= FACTURES PAR CHAUFFEUR ================= */
+/* La dernière facture de chaque chauffeur (quantités, régularisations, pénalités…) est mémorisée. */
+let factures = {};
+async function loadFactures(){
+  try{ const r = await store.get('factures'); factures = r ? JSON.parse(r.value) : {}; }
+  catch(e){ factures = {}; }
+  updateFactStatus();
+}
+function factureKey(){ return $('dNom').value.trim().toLowerCase(); }
+async function saveFacture(manuel){
+  const k = factureKey();
+  if(!k){ if(manuel) toast('Renseigne d\'abord le nom du livreur'); return; }
+  factures[k] = {
+    fMois: $('fMois').value, fEch: $('fEch').value,
+    lines: JSON.parse(JSON.stringify(lines)),
+    penalties: JSON.parse(JSON.stringify(penalties)),
+    savedAt: new Date().toISOString()
+  };
+  try{
+    await store.set('factures', JSON.stringify(factures));
+    updateFactStatus();
+    if(manuel) toast('Facture enregistrée ✓');
+  }catch(e){ if(manuel) toast('Erreur de sauvegarde'); }
+}
+let autoTimer;
+function scheduleAutoSave(){
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(()=>saveFacture(false), 1200);
+}
+function updateFactStatus(){
+  const f = factures[factureKey()];
+  $('factStatus').textContent = f
+    ? '✓ Sauvegardé le ' + new Date(f.savedAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+    : 'Aucune facture mémorisée pour ce chauffeur';
+}
+function loadFactureFor(nom){
+  const f = factures[(nom||'').trim().toLowerCase()];
+  if(f){
+    $('fMois').value = f.fMois || '';
+    $('fEch').value = f.fEch || 'J+30';
+    lines = JSON.parse(JSON.stringify(f.lines || []));
+    penalties = JSON.parse(JSON.stringify(f.penalties || []));
+  }else{
+    /* Pas de facture mémorisée : on repart d'une facture vierge */
+    $('fMois').value = '';
+    $('fEch').value = 'J+30';
+    lines = [{desc:'Colis livrés', qte:0, prix:1.30},{desc:'Dispatch', qte:0, prix:0.10}];
+    penalties = [];
+  }
+  renderLines(); renderPreview(); updateFactStatus();
+}
+$('btnSaveFacture').onclick = ()=>saveFacture(true);
+
+
 let toastTimer;
 function toast(msg){
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -521,6 +579,7 @@ function toast(msg){
 renderLines();
 renderPreview();
 loadDrivers();
+loadFactures();
 </script>
 </body>
 </html>
